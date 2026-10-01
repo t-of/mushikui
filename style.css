@@ -1,0 +1,129 @@
+:root {
+  --bg: #2f6f4f;
+  --fg: #eceef3;
+  --muted: #9aa0ab;
+  --accent: #ffd35c;
+}
+
+* { box-sizing: border-box; }
+
+/* Safari 26 の上下バーの色は html の背景から取られる。body と同じ色にしておく */
+html { background-color: var(--bg); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+/* 画面の端に置くものはセーフエリアの分だけ内側に。高さは 100vh ではなく 100dvh */
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bar__title { margin: 0; font-size: 18px; }
+.bar__actions { display: flex; gap: 8px; }
+.pill {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;   /* ダブルタップ拡大を止める */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.credit { text-align: center; font-size: 12px; color: var(--muted); }
+.credit a { color: inherit; }
+
+/* 全画面のオーバーレイは opacity ではなく display: none で隠す */
+
+/* ---- ここからアプリ本体 ---- */
+
+.stage { width: 100%; max-width: 480px; }
+
+/* ホーム画面 */
+.home { text-align: center; }
+.home__title { margin: 0 0 4px; font-size: 26px; }
+.home__lead { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+.home__sub { margin: 24px 0 8px; color: var(--muted); font-size: 12px; }
+.home__main, .home__extra { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.opBtn {
+  border: none; border-radius: 14px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.08); color: var(--fg);
+}
+.opBtn--main { padding: 28px 36px; font-size: 20px; font-weight: 700; }
+.opBtn--main:nth-child(1) { background: var(--accent); color: #1a1a1a; }
+.opBtn--sub { padding: 10px 18px; font-size: 14px; }
+
+/* 一覧画面 */
+.list__bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.list__title { margin: 0; font-size: 16px; }
+.list__grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px;
+  max-height: 60dvh; overflow-y: auto;
+}
+.numBtn {
+  border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.05);
+  color: var(--fg); border-radius: 8px; padding: 10px 0; font-size: 14px; cursor: pointer;
+}
+.numBtn--solved { background: var(--accent); color: #1a1a1a; border-color: transparent; }
+.loading { text-align: center; color: var(--muted); }
+
+/* 問題画面 */
+.puzzle__bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.puzzle__count { font-size: 14px; color: var(--muted); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell, 28px));
+  grid-auto-rows: var(--cell, 28px);
+  justify-content: center;
+  margin: 0 auto 10px;
+  font-family: 'Hiragino Mincho ProN', 'Noto Serif JP', monospace;
+}
+.cell {
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--cell, 28px) * 0.55);
+  color: var(--fg);
+}
+.cell--edit, .cell--fixed {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+.cell--fixed { color: var(--accent); font-weight: 700; }
+.cell--edit { cursor: pointer; }
+.cell--active { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cell--ok { background: rgba(120, 220, 140, 0.35); }
+.cell--bad { background: rgba(230, 90, 90, 0.4); }
+.cell--deco { border: none; background: none; }
+
+.status { text-align: center; min-height: 1.4em; font-size: 15px; }
+.actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+.pill--main { background: var(--accent); color: #1a1a1a; }
+
+.pad {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  max-width: 280px; margin: 0 auto;
+}
+.padBtn {
+  min-height: 44px; border: none; border-radius: 8px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.08); color: var(--fg); font-size: 18px;
+}
+.padBtn--clear { grid-column: span 1; font-size: 13px; }
