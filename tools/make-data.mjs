@@ -9,7 +9,7 @@
 // （同じ割る数・商のまま余りと割られる数の一の位がずれる）。そういう問題は余りのマスに 0 を見せる。
 //
 // id は演算と grid_problem（余りの 0 を見せる前のもの）から作る短いハッシュ。並び順が変わっても壊れない（mushikui.solved の印に使う）。
-// 1 桁 × 何桁 のかけ算（九九レベルで簡単すぎる）と、1 桁で割るわり算は意味が薄いので外す。
+// かけ算・わり算は厳選して載せる（下の isDull）。
 //
 // 使い方: node tools/make-data.mjs [探索データのフォルダ=~/GitHub/tof/drafts/mushikui/search]
 import fs from 'node:fs';
@@ -26,11 +26,24 @@ function shortId(op, problem) {
   return crypto.createHash('sha1').update(`${op}\n${problem}`).digest('hex').slice(0, 10);
 }
 
-// 九九レベル（かけ算で片方が 1 桁、わり算で割る数が 1 桁）は簡単すぎるので外す
-function isTrivial(op, r) {
-  const len = (name) => r.shape.find((s) => s[0] === name)?.[1];
-  if (op === 'mul') return len('A') === 1 || len('B') === 1;
-  if (op === 'div') return len('B') === 1;
+// 厳選: 単純すぎる・同じ形の繰り返しになる問題を外す（かけ算・わり算だけ）
+//   - 九九レベル（かけ算で片方が 1 桁、わり算で割る数が 1 桁）
+//   - かけられる数・かける数（わり算は割る数・商）の末尾が 0、または 11・999 のように同じ数字だけ
+//   - 部分積に同じ数が 2 回以上出る（95×1101 のように同じ行が並ぶ）
+//   - 答えの図に出てくる数字が 6 種類未満
+//   - 答えの図が同じもの（見えている数字の場所だけ違う）は最初の 1 問だけ
+function isDull(op, r, seen) {
+  if (op !== 'mul' && op !== 'div') return false;
+  const val = (name) => r.rows.find((s) => s[0] === name)[1];
+  const [x, y] = op === 'mul' ? [val('A'), val('B')] : [val('B'), val('Q')];
+  if (x < 10 || (op === 'mul' && y < 10)) return true;
+  if (x % 10 === 0 || y % 10 === 0) return true;
+  if (new Set(String(x)).size === 1 || new Set(String(y)).size === 1) return true;
+  const ps = r.rows.filter((s) => s[0] === 'P').map((s) => s[1]);
+  if (new Set(ps).size < ps.length) return true;
+  if (new Set(r.grid_solution.replace(/[^０-９]/g, '')).size < 6) return true;
+  if (seen.has(r.grid_solution)) return true;
+  seen.add(r.grid_solution);
   return false;
 }
 
@@ -80,9 +93,10 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
   const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
   const groups = new Map();   // n（□ の数） -> [id, problem, solution][]
   let skipped = 0, revealed = 0;
+  const seen = new Set();
   for (const line of lines) {
     const r = JSON.parse(line);
-    if (isTrivial(op, r)) { skipped++; continue; }
+    if (isDull(op, r, seen)) { skipped++; continue; }
     const id = shortId(op, r.grid_problem);
     let problem = r.grid_problem;
     if (op === 'div' && remainderSplits(r)) { problem = revealRemainder(problem); revealed++; }
@@ -103,5 +117,5 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
     groups: ns.map((n) => ({ n, ids: groups.get(n).map(([id]) => id) })),
   };
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
-  console.log(op, manifest.total, '問（', skipped, '問は 1 桁で単純すぎるため除外）', revealed ? `余りの 0 を見せた ${revealed} 問` : '');
+  console.log(op, manifest.total, '問（', skipped, '問は単純すぎるため除外）', revealed ? `余りの 0 を見せた ${revealed} 問` : '');
 }
