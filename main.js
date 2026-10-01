@@ -103,10 +103,24 @@ function showHome() {
   });
 }
 
+// 虫食い（□）の数で難易度の区分に分ける。data/*.json は □ の数が少ない順に並んでいるので、
+// 同じ数のものは配列の中で連続している（区分ごとに範囲が切れる）。
+function groupByBlanks(puzzles) {
+  const groups = [];
+  puzzles.forEach(([problem], i) => {
+    const n = (problem.match(/□/g) || []).length;
+    const last = groups[groups.length - 1];
+    if (last && last.n === n) last.indexes.push(i);
+    else groups.push({ n, indexes: [i] });
+  });
+  return groups;
+}
+
 async function showList(op) {
   stage.innerHTML = '<p class="loading">読み込み中…</p>';
   const puzzles = await loadPuzzles(op);
   const solved = getSolved(op);
+  const groups = groupByBlanks(puzzles);
   stage.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'list';
@@ -114,19 +128,39 @@ async function showList(op) {
     <div class="list__bar">
       <button class="pill" data-act="back">← もどる</button>
       <h2 class="list__title">${OPS[op].label}</h2>
+      <span class="list__total">ぜんぶ ${puzzles.length} 問・解いた ${solved.size} 問</span>
     </div>
-    <div class="list__grid"></div>
+    <div class="list__tabs">
+      ${groups.map((g) => `<button class="tabBtn" data-jump="blanks-${g.n}">□${g.n}</button>`).join('')}
+    </div>
+    <div class="list__sections"></div>
   `;
-  const grid = wrap.querySelector('.list__grid');
-  puzzles.forEach((_, i) => {
-    const b = document.createElement('button');
-    b.className = 'numBtn' + (solved.has(i) ? ' numBtn--solved' : '');
-    b.textContent = String(i + 1);
-    b.addEventListener('click', () => showPuzzle(op, i));
-    grid.appendChild(b);
+  const sections = wrap.querySelector('.list__sections');
+  groups.forEach((g) => {
+    const solvedInGroup = g.indexes.filter((i) => solved.has(i)).length;
+    const section = document.createElement('section');
+    section.className = 'listGroup';
+    section.id = `blanks-${g.n}`;
+    section.innerHTML = `<h3 class="listGroup__title">□ ${g.n} 個（${g.indexes.length} 問・解いた ${solvedInGroup} 問）</h3>`;
+    const grid = document.createElement('div');
+    grid.className = 'list__grid';
+    g.indexes.forEach((i) => {
+      const b = document.createElement('button');
+      b.className = 'numBtn' + (solved.has(i) ? ' numBtn--solved' : '');
+      b.textContent = String(i + 1);
+      b.addEventListener('click', () => showPuzzle(op, i));
+      grid.appendChild(b);
+    });
+    section.appendChild(grid);
+    sections.appendChild(section);
   });
   stage.appendChild(wrap);
   wrap.querySelector('[data-act="back"]').addEventListener('click', showHome);
+  wrap.querySelector('.list__tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-jump]');
+    if (!b) return;
+    document.getElementById(b.dataset.jump).scrollIntoView({ block: 'start' });
+  });
 }
 
 // 1 文字ずつのマス。kind: 'edit'（空マス）/ 'fixed'（最初から見えている数字）/ 'deco'（記号・空白・線）

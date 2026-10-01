@@ -43,6 +43,7 @@ button { font: inherit; color: inherit; }
 }
 .stage {
   flex: 1;
+  width: 100%;
   display: grid;
   place-items: center;
   touch-action: manipulation;   /* ダブルタップ拡大を止める */
@@ -56,7 +57,8 @@ button { font: inherit; color: inherit; }
 
 /* ---- ここからアプリ本体 ---- */
 
-.stage { width: 100%; max-width: 480px; }
+/* ホーム画面・問題画面はスマホ幅に収め中央寄せ。一覧だけは PC 幅いっぱいに広げる（下の .list） */
+.home, .puzzle { width: 100%; max-width: 480px; }
 
 /* ホーム画面 */
 .home { text-align: center; }
@@ -72,16 +74,36 @@ button { font: inherit; color: inherit; }
 .opBtn--main:nth-child(1) { background: var(--accent); color: #1a1a1a; }
 .opBtn--sub { padding: 10px 18px; font-size: 14px; }
 
-/* 一覧画面 */
-.list__bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+/* 一覧画面。PC では画面いっぱいに広げて、たくさんのマスを一度に見せる */
+.list { width: 100%; max-width: 1400px; justify-self: stretch; }
+.list__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
 .list__title { margin: 0; font-size: 16px; }
+.list__total { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+/* 区分（虫食いの数）へのタブ */
+.list__tabs {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;
+  max-height: 110px; overflow-y: auto;
+}
+.tabBtn {
+  border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.05);
+  color: var(--fg); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+
+.list__sections { max-height: 72dvh; overflow-y: auto; }
+.listGroup { margin-bottom: 18px; scroll-margin-top: 8px; }
+.listGroup__title { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 400; }
 .list__grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px;
-  max-height: 60dvh; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 5px;
 }
 .numBtn {
   border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.05);
-  color: var(--fg); border-radius: 8px; padding: 10px 0; font-size: 14px; cursor: pointer;
+  color: var(--fg); border-radius: 8px; padding: 8px 0; font-size: 13px; cursor: pointer;
+}
+/* PC 幅ではマスを小さく・細かく敷き詰めて一度にたくさん見せる */
+@media (min-width: 900px) {
+  .list__grid { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 4px; }
+  .numBtn { padding: 6px 0; font-size: 12px; }
 }
 .numBtn--solved { background: var(--accent); color: #1a1a1a; border-color: transparent; }
 .loading { text-align: center; color: var(--muted); }
