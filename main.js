@@ -27,31 +27,53 @@ function setAudioSession(soundOn) {
 
 // ---- ここからアプリ本体 ----
 
-// 演算の種類。file は data/ 以下の json（[problem, solution] の配列、簡単な順に並んでいる）。
+// 演算の種類。問題は data/<op>/ 以下にある（tools/make-data.mjs が作る）。
+//   manifest.json: 区分（虫食い=□ の数）ごとの id の並びと件数だけ（軽い。一覧画面が読む）
+//   blanks-<n>.json: その区分の問題本体 [id, grid_problem, grid_solution][]（問題を開くときだけ読む）
 const OPS = {
-  mul: { label: 'かけ算', file: './data/mul.json' },
-  div: { label: 'わり算', file: './data/div.json' },
-  add: { label: 'たし算', file: './data/add.json' },
-  sub: { label: 'ひき算', file: './data/sub.json' },
+  mul: { label: 'かけ算' },
+  div: { label: 'わり算' },
+  add: { label: 'たし算' },
+  sub: { label: 'ひき算' },
 };
 
-const dataCache = {};   // op -> Promise<[problem, solution][]>
-function loadPuzzles(op) {
-  if (!dataCache[op]) {
-    dataCache[op] = fetch(OPS[op].file).then((r) => r.json());
-  }
-  return dataCache[op];
+const manifestCache = {};   // op -> Promise<{ total, groups: [{ n, ids }] }>
+function loadManifest(op) {
+  if (!manifestCache[op]) manifestCache[op] = fetch(`./data/${op}/manifest.json`).then((r) => r.json());
+  return manifestCache[op];
+}
+const groupCache = {};   // "op:n" -> Promise<[id, problem, solution][]>
+function loadGroup(op, n) {
+  const key = `${op}:${n}`;
+  if (!groupCache[key]) groupCache[key] = fetch(`./data/${op}/blanks-${n}.json`).then((r) => r.json());
+  return groupCache[key];
 }
 
-// 解いた問題の番号（印だけ。中身は持たない）
+// 次の問題（区分をまたいで、見えている並びのまま進む）
+function nextPosition(manifest, n, localIndex) {
+  const gi = manifest.groups.findIndex((g) => g.n === n);
+  const g = manifest.groups[gi];
+  if (localIndex + 1 < g.ids.length) return { n, localIndex: localIndex + 1 };
+  const ngi = (gi + 1) % manifest.groups.length;
+  return { n: manifest.groups[ngi].n, localIndex: 0 };
+}
+// その問題が全体の何問目か（表示用。1 始まり）
+function globalPosition(manifest, n, localIndex) {
+  let pos = localIndex;
+  for (const g of manifest.groups) { if (g.n === n) break; pos += g.ids.length; }
+  return pos + 1;
+}
+
+// 解いた問題の印（id だけ。中身は持たない）。問題を減らす・足すと番号がずれるので、
+// 番号ではなく問題ごとに安定した id（grid_problem のハッシュ）で覚える。
 function getSolved(op) {
   const all = load('solved', {});
   return new Set(all[op] || []);
 }
-function markSolved(op, index) {
+function markSolved(op, id) {
   const all = load('solved', {});
   const set = new Set(all[op] || []);
-  set.add(index);
+  set.add(id);
   all[op] = [...set];
   save('solved', all);
 }
@@ -103,54 +125,44 @@ function showHome() {
   });
 }
 
-// 虫食い（□）の数で難易度の区分に分ける。data/*.json は □ の数が少ない順に並んでいるので、
-// 同じ数のものは配列の中で連続している（区分ごとに範囲が切れる）。
-function groupByBlanks(puzzles) {
-  const groups = [];
-  puzzles.forEach(([problem], i) => {
-    const n = (problem.match(/□/g) || []).length;
-    const last = groups[groups.length - 1];
-    if (last && last.n === n) last.indexes.push(i);
-    else groups.push({ n, indexes: [i] });
-  });
-  return groups;
-}
-
+// 一覧は manifest（id の並びだけ）で描く。問題の中身（重い）は問題を開くときだけ読む。
 async function showList(op) {
   stage.innerHTML = '<p class="loading">読み込み中…</p>';
-  const puzzles = await loadPuzzles(op);
+  const manifest = await loadManifest(op);
   const solved = getSolved(op);
-  const groups = groupByBlanks(puzzles);
   stage.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'list';
+  const solvedTotal = manifest.groups.reduce((s, g) => s + g.ids.filter((id) => solved.has(id)).length, 0);
   wrap.innerHTML = `
     <div class="list__bar">
       <button class="pill" data-act="back">← もどる</button>
       <h2 class="list__title">${OPS[op].label}</h2>
-      <span class="list__total">ぜんぶ ${puzzles.length} 問・解いた ${solved.size} 問</span>
+      <span class="list__total">ぜんぶ ${manifest.total} 問・解いた ${solvedTotal} 問</span>
     </div>
     <div class="list__tabs">
-      ${groups.map((g) => `<button class="tabBtn" data-jump="blanks-${g.n}">□${g.n}</button>`).join('')}
+      ${manifest.groups.map((g) => `<button class="tabBtn" data-jump="blanks-${g.n}">□${g.n}</button>`).join('')}
     </div>
     <div class="list__sections"></div>
   `;
   const sections = wrap.querySelector('.list__sections');
-  groups.forEach((g) => {
-    const solvedInGroup = g.indexes.filter((i) => solved.has(i)).length;
+  let cum = 0;
+  manifest.groups.forEach((g) => {
+    const solvedInGroup = g.ids.filter((id) => solved.has(id)).length;
     const section = document.createElement('section');
     section.className = 'listGroup';
     section.id = `blanks-${g.n}`;
-    section.innerHTML = `<h3 class="listGroup__title">□ ${g.n} 個（${g.indexes.length} 問・解いた ${solvedInGroup} 問）</h3>`;
+    section.innerHTML = `<h3 class="listGroup__title">□ ${g.n} 個（${g.ids.length} 問・解いた ${solvedInGroup} 問）</h3>`;
     const grid = document.createElement('div');
     grid.className = 'list__grid';
-    g.indexes.forEach((i) => {
+    g.ids.forEach((id, localIndex) => {
       const b = document.createElement('button');
-      b.className = 'numBtn' + (solved.has(i) ? ' numBtn--solved' : '');
-      b.textContent = String(i + 1);
-      b.addEventListener('click', () => showPuzzle(op, i));
+      b.className = 'numBtn' + (solved.has(id) ? ' numBtn--solved' : '');
+      b.textContent = String(cum + localIndex + 1);
+      b.addEventListener('click', () => showPuzzle(op, g.n, localIndex));
       grid.appendChild(b);
     });
+    cum += g.ids.length;
     section.appendChild(grid);
     sections.appendChild(section);
   });
@@ -184,14 +196,18 @@ const FULL = '０１２３４５６７８９';
 function fullToHalf(ch) { const i = FULL.indexOf(ch); return i < 0 ? null : i; }
 function halfToFull(n) { return FULL[n]; }
 
-let cur = null;   // { op, index, rows, active: [r,c] | null, done }
+let cur = null;   // { op, n, localIndex, id, manifest, pos, total, rows, active: [r,c] | null, done }
 
-function showPuzzle(op, index) {
-  loadPuzzles(op).then((puzzles) => {
-    const [problem, solution] = puzzles[index];
-    cur = { op, index, total: puzzles.length, rows: buildCells(problem, solution), active: null, done: false };
-    renderPuzzle();
-  });
+async function showPuzzle(op, n, localIndex) {
+  stage.innerHTML = '<p class="loading">読み込み中…</p>';
+  const [manifest, group] = await Promise.all([loadManifest(op), loadGroup(op, n)]);
+  const [id, problem, solution] = group[localIndex];
+  cur = {
+    op, n, localIndex, id, manifest,
+    pos: globalPosition(manifest, n, localIndex), total: manifest.total,
+    rows: buildCells(problem, solution), active: null, done: false,
+  };
+  renderPuzzle();
 }
 
 function editableList() {
@@ -207,7 +223,7 @@ function renderPuzzle() {
   wrap.innerHTML = `
     <div class="puzzle__bar">
       <button class="pill" data-act="list">← 一覧</button>
-      <span class="puzzle__count">${OPS[cur.op].label} ${cur.index + 1} / ${cur.total}</span>
+      <span class="puzzle__count">${OPS[cur.op].label} ${cur.pos} / ${cur.total}</span>
     </div>
     <div class="grid"></div>
     <p class="status" id="status"></p>
@@ -234,15 +250,14 @@ function renderPuzzle() {
     });
   });
   gridEl.style.setProperty('--cols', cols);
-  fitGrid(gridEl, cols);
-  window.addEventListener('resize', () => fitGrid(gridEl, cols), { once: true });
+  fitGrid(gridEl, cols, cur.rows.length);
 
   paintGrid();
 
   wrap.querySelector('[data-act="list"]').addEventListener('click', () => showList(cur.op));
   wrap.querySelector('[data-act="next"]').addEventListener('click', () => {
-    const next = (cur.index + 1) % cur.total;
-    showPuzzle(cur.op, next);
+    const { n, localIndex } = nextPosition(cur.manifest, cur.n, cur.localIndex);
+    showPuzzle(cur.op, n, localIndex);
   });
   wrap.querySelector('[data-act="reveal"]').addEventListener('click', reveal);
   wrap.querySelector('[data-act="check"]').addEventListener('click', checkAnswer);
@@ -259,18 +274,27 @@ function renderPuzzle() {
     if (b.dataset.digit === 'clear') setActiveValue(null);
     else setActiveValue(Number(b.dataset.digit));
   });
-
-  if (!cur._keyHandler) {
-    cur._keyHandler = onKeyDown;
-  }
-  document.addEventListener('keydown', onKeyDown);
 }
 
-function fitGrid(gridEl, cols) {
-  const avail = gridEl.parentElement.clientWidth;
-  const size = Math.max(16, Math.min(40, Math.floor(avail / cols)));
-  gridEl.style.setProperty('--cell', size + 'px');
+// マスの大きさは問題ごとに、画面の幅と高さの両方に収まる最大にする（上限 72px）。
+// 他の部品（上のバー・答え合わせなどのボタン・数字パッド）が使っている分は、グリッド以外の
+// 高さとして差し引く。resize（回転・ウィンドウ変更）のたびに window が呼び直す（下の 1 回だけの登録）。
+function fitGrid(gridEl, cols, rows) {
+  const MIN = 18, MAX = 72;
+  const availW = gridEl.parentElement.clientWidth;
+  const appEl = document.querySelector('.app');
+  const otherH = appEl.scrollHeight - (gridEl.offsetHeight || 0);
+  const availH = Math.max(100, window.innerHeight - otherH - 8);
+  const sizeW = Math.min(MAX, Math.floor(availW / cols));   // 横は必ずこの中に収める（上限はある）
+  const sizeH = Math.floor(availH / rows);
+  // 高さにも収めると小さくなりすぎるときは、縦のスクロールを許して横基準の大きさのままにする
+  const size = sizeH >= MIN ? Math.min(sizeW, sizeH) : sizeW;
+  gridEl.style.setProperty('--cell', Math.max(1, size) + 'px');
 }
+window.addEventListener('resize', () => {
+  const gridEl = document.querySelector('.grid');
+  if (gridEl && cur) fitGrid(gridEl, cur.rows[0].length, cur.rows.length);
+});
 
 function paintGrid() {
   const gridEl = document.querySelector('.grid');
@@ -309,13 +333,13 @@ function moveActive(delta) {
 }
 
 function onKeyDown(e) {
-  if (!cur || cur.done) return;
-  if (!document.querySelector('.puzzle')) { document.removeEventListener('keydown', onKeyDown); return; }
+  if (!cur || cur.done || !document.querySelector('.puzzle')) return;
   if (/^[0-9]$/.test(e.key)) { setActiveValue(Number(e.key)); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') { setActiveValue(null); return; }
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { moveActive(1); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { moveActive(-1); return; }
 }
+document.addEventListener('keydown', onKeyDown);   // 画面ごとに付け替えない（1 回だけ登録）
 
 function checkAnswer() {
   const list = editableList();
@@ -333,7 +357,7 @@ function checkAnswer() {
   });
   if (ok) {
     cur.done = true;
-    markSolved(cur.op, cur.index);
+    markSolved(cur.op, cur.id);
     status.textContent = 'せいかい！';
     beep([523, 659, 784]);
   } else {

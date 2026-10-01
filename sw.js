@@ -9,7 +9,7 @@
 // ブラウザの HTTP キャッシュを通さない（install は reload、fetch は no-cache）。古い main.js と新しい index.html が混ざって動かなくなるのを防ぐ。
 
 const PREFIX = 'mushikui-';
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `${PREFIX}${VERSION}`;
 const FONT_CACHE = `${PREFIX}fonts`;
 
@@ -25,10 +25,12 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
-  './data/add.json',
-  './data/sub.json',
-  './data/mul.json',
-  './data/div.json',
+  // 区分（data/<op>/blanks-<n>.json）は問題数が多く・増え続けるため SHELL には入れない。
+  // 開いたときに networkFirst がそのつど保存するので、1 度見た問題はオフラインでも開ける。
+  './data/add/manifest.json',
+  './data/sub/manifest.json',
+  './data/mul/manifest.json',
+  './data/div/manifest.json',
 ];
 
 self.addEventListener('install', (e) => {

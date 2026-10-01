@@ -57,8 +57,10 @@ button { font: inherit; color: inherit; }
 
 /* ---- ここからアプリ本体 ---- */
 
-/* ホーム画面・問題画面はスマホ幅に収め中央寄せ。一覧だけは PC 幅いっぱいに広げる（下の .list） */
-.home, .puzzle { width: 100%; max-width: 480px; }
+/* ホームはスマホ幅に収め中央寄せ。問題画面は PC では広げてマスを大きくできるように。
+   一覧はさらに広く PC 幅いっぱいに（下の .list） */
+.home { width: 100%; max-width: 480px; }
+.puzzle { width: 100%; max-width: 960px; }
 
 /* ホーム画面 */
 .home { text-align: center; }
