@@ -9,13 +9,14 @@
 // （同じ割る数・商のまま余りと割られる数の一の位がずれる）。そういう問題は余りのマスに 0 を見せる。
 //
 // id は演算と grid_problem（余りの 0 を見せる前のもの）から作る短いハッシュ。並び順が変わっても壊れない（mushikui.solved の印に使う）。
-// かけ算・わり算は厳選して載せる（下の isDull）。
+// かけ算・わり算は厳選して載せる（下の dullness）。虫食いの数・見えている数字の数ごとに最低限は足す。
 //
 // 使い方: node tools/make-data.mjs [探索データのフォルダ=~/GitHub/tof/drafts/mushikui/search]
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const APP_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -27,23 +28,30 @@ function shortId(op, problem) {
 }
 
 // 厳選: 単純すぎる・同じ形の繰り返しになる問題を外す（かけ算・わり算だけ）
-//   - 九九レベル（かけ算で片方が 1 桁、わり算で割る数が 1 桁）
 //   - かけられる数・かける数（わり算は割る数・商）の末尾が 0、または 11・999 のように同じ数字だけ
 //   - 部分積に同じ数が 2 回以上出る（95×1101 のように同じ行が並ぶ）
 //   - 答えの図に出てくる数字が 6 種類未満
-//   - 答えの図が同じもの（見えている数字の場所だけ違う）は最初の 1 問だけ
-function isDull(op, r, seen) {
-  if (op !== 'mul' && op !== 'div') return false;
+// dullness はその当てはまった数（0 なら厳選に入る）。区分を埋めるときは score の高い順に足す。
+function dullness(op, r) {
+  if (op !== 'mul' && op !== 'div') return 0;
   const val = (name) => r.rows.find((s) => s[0] === name)[1];
   const [x, y] = op === 'mul' ? [val('A'), val('B')] : [val('B'), val('Q')];
-  if (x < 10 || (op === 'mul' && y < 10)) return true;
-  if (x % 10 === 0 || y % 10 === 0) return true;
-  if (new Set(String(x)).size === 1 || new Set(String(y)).size === 1) return true;
+  let d = 0;
+  if (x % 10 === 0 || y % 10 === 0) d++;
+  if (new Set(String(x)).size === 1 || new Set(String(y)).size === 1) d++;
   const ps = r.rows.filter((s) => s[0] === 'P').map((s) => s[1]);
-  if (new Set(ps).size < ps.length) return true;
-  if (new Set(r.grid_solution.replace(/[^０-９]/g, '')).size < 6) return true;
-  if (seen.has(r.grid_solution)) return true;
-  seen.add(r.grid_solution);
+  if (new Set(ps).size < ps.length) d++;
+  if (distinctDigits(r) < 6) d++;
+  return d;
+}
+const distinctDigits = (r) => new Set(r.grid_solution.replace(/[^０-９]/g, '')).size;
+const score = (op, r) => distinctDigits(r) - 3 * dullness(op, r);
+
+// 九九レベル（かけ算で片方が 1 桁、わり算で割る数が 1 桁）は簡単すぎるので、どこにも入れない
+function isTrivial(op, r) {
+  const len = (name) => r.shape.find((s) => s[0] === name)?.[1];
+  if (op === 'mul') return len('A') === 1 || len('B') === 1;
+  if (op === 'div') return len('B') === 1;
   return false;
 }
 
@@ -66,17 +74,19 @@ function divRows(b, q, r) {
   return rows;
 }
 
-// 余り 1〜9 を許すと、形も見えている数字も同じ別解があるか
+// 余り 1〜9 を許すと、形も見えている数字も同じ別解があるか（revealed は 1 つ＝物、2 つ＝配列）
 function remainderSplits(r) {
-  const q = r.rows[0][1], b = r.rows[1][1], v = r.revealed;
+  const q = r.rows[0][1], b = r.rows[1][1];
   const shape = JSON.stringify(r.shape);
-  const L = r.shape[v.row][1];
   const width = Math.max(...r.shape.filter((s) => s[0] !== 'B').map((s) => s[1] + s[2]));
-  const i = v.row_name === 'B' ? v.col + L : v.col - (width - r.shape[v.row][2] - L);
+  const vs = [r.revealed].flat().map((v) => {
+    const L = r.shape[v.row][1];
+    return { row: v.row, digit: String(v.digit), i: v.row_name === 'B' ? v.col + L : v.col - (width - r.shape[v.row][2] - L) };
+  });
   for (let rem = 1; rem < Math.min(b, 10); rem++) {
     const rows = divRows(b, q, rem);
     if (!rows || JSON.stringify(rows.map(([nm, x, o]) => [nm, String(x).length, o])) !== shape) continue;
-    if (String(rows[v.row][1])[i] === String(v.digit)) return true;
+    if (vs.every((v) => String(rows[v.row][1])[v.i] === v.digit)) return true;
   }
   return false;
 }
@@ -88,21 +98,63 @@ function revealRemainder(problem) {
   return lines.join('\n');
 }
 
+// 探索データ: 見えている数字 1 つ（puzzles_<op>.jsonl）と 2 つ（out2/<op>_*.jsonl、大きいので 1 行ずつ読む）
+async function* records(op) {
+  const files = [path.join(SRC, `puzzles_${op}.jsonl`)];
+  const dir2 = path.join(SRC, 'out2');
+  if (fs.existsSync(dir2)) files.push(...fs.readdirSync(dir2).filter((f) => f.startsWith(`${op}_`) && f.endsWith('.jsonl')).sort().map((f) => path.join(dir2, f)));
+  for (const f of files) {
+    for await (const line of readline.createInterface({ input: fs.createReadStream(f) })) if (line) yield JSON.parse(line);
+  }
+}
+
+// 載せる問題: 見えている数字 1 つで厳選に入るもの（同じ答えは最初の 1 問）。そのうえで
+// 虫食い（□）の数ごとに PER_BLANKS 問、見えている数字の数ごとに PER_SHOWN 問はあるように、score の高い順に足す。
+const PER_BLANKS = 2, PER_SHOWN = 1;
+const count = (s, re) => (s.match(re) || []).length;
+
 for (const op of ['add', 'sub', 'mul', 'div']) {
-  const file = path.join(SRC, `puzzles_${op}.jsonl`);
-  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
-  const groups = new Map();   // n（□ の数） -> [id, problem, solution][]
+  const picked = new Map();   // grid_solution -> 載せる問題
+  const best = { n: new Map(), v: new Map() };   // 区分 -> score の高い順の候補（上位だけ）
   let skipped = 0, revealed = 0;
-  const seen = new Set();
-  for (const line of lines) {
-    const r = JSON.parse(line);
-    if (isDull(op, r, seen)) { skipped++; continue; }
-    const id = shortId(op, r.grid_problem);
+  const keep = (list, cand, max) => {
+    if (list.some((c) => c.solution === cand.solution)) return;
+    list.push(cand);
+    list.sort((a, b) => b.score - a.score);
+    list.length = Math.min(list.length, max + PER_BLANKS + PER_SHOWN);   // 厳選と重なる分の余裕
+  };
+  for await (const r of records(op)) {
+    if (isTrivial(op, r)) { skipped++; continue; }
     let problem = r.grid_problem;
-    if (op === 'div' && remainderSplits(r)) { problem = revealRemainder(problem); revealed++; }
-    const n = (problem.match(/□/g) || []).length;
-    if (!groups.has(n)) groups.set(n, []);
-    groups.get(n).push([id, problem, r.grid_solution]);
+    const split = op === 'div' && remainderSplits(r);
+    if (split) problem = revealRemainder(problem);
+    const cand = {
+      id: shortId(op, r.grid_problem), problem, solution: r.grid_solution, split,
+      n: count(problem, /□/g), v: count(problem, /[０-９]/g), score: score(op, r),
+    };
+    if (!Array.isArray(r.revealed) && dullness(op, r) === 0 && !picked.has(cand.solution)) { picked.set(cand.solution, cand); continue; }
+    for (const [k, max] of [['n', PER_BLANKS], ['v', PER_SHOWN]]) {
+      if (!best[k].has(cand[k])) best[k].set(cand[k], []);
+      keep(best[k].get(cand[k]), cand, max);
+    }
+  }
+  for (const [k, max] of [['n', PER_BLANKS], ['v', PER_SHOWN]]) {
+    for (const [key, list] of best[k]) {
+      let have = [...picked.values()].filter((c) => c[k] === key).length;
+      for (const c of list) {
+        if (have >= max) break;
+        if (picked.has(c.solution)) continue;
+        picked.set(c.solution, c);
+        have++;
+      }
+    }
+  }
+
+  const groups = new Map();   // n（□ の数） -> [id, problem, solution][]（見えている数字が多い＝やさしい順）
+  for (const c of [...picked.values()].sort((a, b) => a.n - b.n || b.v - a.v)) {
+    if (c.split) revealed++;
+    if (!groups.has(c.n)) groups.set(c.n, []);
+    groups.get(c.n).push([c.id, c.problem, c.solution]);
   }
   const ns = [...groups.keys()].sort((a, b) => a - b);
 
@@ -117,5 +169,6 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
     groups: ns.map((n) => ({ n, ids: groups.get(n).map(([id]) => id) })),
   };
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
-  console.log(op, manifest.total, '問（', skipped, '問は単純すぎるため除外）', revealed ? `余りの 0 を見せた ${revealed} 問` : '');
+  const shown = [...new Set([...picked.values()].map((c) => c.v))].sort((a, b) => a - b);
+  console.log(op, manifest.total, '問（', skipped, '問は 1 桁で単純すぎるため除外）', `見えている数字 ${shown.join('・')} 個`, revealed ? `余りの 0 を見せた ${revealed} 問` : '');
 }
