@@ -113,6 +113,7 @@ button { font: inherit; color: inherit; }
 /* 問題画面 */
 .puzzle__bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .puzzle__count { font-size: 14px; color: var(--muted); }
+.puzzle__rule { margin: 0 0 8px; text-align: center; font-size: 14px; color: var(--muted); }
 
 .grid {
   display: grid;
