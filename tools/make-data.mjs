@@ -74,19 +74,37 @@ function divRows(b, q, r) {
   return rows;
 }
 
-// 余り 1〜9 を許すと、形も見えている数字も同じ別解があるか（revealed は 1 つ＝物、2 つ＝配列）
+// 余り 1〜9 を許すと、形も見えている数字も同じ別解があるか（revealed は 1 つ＝物、2 つ＝配列）。
+// 割る数・商も変えて探す（116)11598724 に 113)…+7 などの別解がある）。商の各桁は、引く数 P の行の桁数に合う数字だけ試す
 function remainderSplits(r) {
-  const q = r.rows[0][1], b = r.rows[1][1];
   const shape = JSON.stringify(r.shape);
+  const len = (nm) => r.shape.find((s) => s[0] === nm)[1];
+  const lq = len('Q'), lb = len('B'), n = len('A'), k = n - lq + 1;
+  const pLen = Array(lq).fill(0);   // 商の i 桁目の P の桁数（0 の桁は P がない）
+  r.shape.forEach(([nm, L, off]) => { if (nm === 'P') pLen[n - k - off] = L; });
   const width = Math.max(...r.shape.filter((s) => s[0] !== 'B').map((s) => s[1] + s[2]));
   const vs = [r.revealed].flat().map((v) => {
     const L = r.shape[v.row][1];
     return { row: v.row, digit: String(v.digit), i: v.row_name === 'B' ? v.col + L : v.col - (width - r.shape[v.row][2] - L) };
   });
-  for (let rem = 1; rem < Math.min(b, 10); rem++) {
-    const rows = divRows(b, q, rem);
-    if (!rows || JSON.stringify(rows.map(([nm, x, o]) => [nm, String(x).length, o])) !== shape) continue;
-    if (vs.every((v) => String(rows[v.row][1])[v.i] === v.digit)) return true;
+  const vq = vs.filter((v) => v.row === 0), vb = vs.filter((v) => v.row === 1);
+  for (let b = 10 ** (lb - 1); b < 10 ** lb; b++) {
+    if (!vb.every((v) => String(b)[v.i] === v.digit)) continue;
+    const opts = pLen.map((L, i) => (L ? [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((d) => String(b * d).length === L) : [0])
+      .filter((d) => vq.every((v) => v.i !== i || String(d) === v.digit)));
+    if (opts.some((o) => !o.length)) continue;
+    const idx = Array(lq).fill(0);
+    for (;;) {
+      const q = Number(idx.map((j, i) => opts[i][j]).join(''));
+      for (let rem = 1; rem < Math.min(b, 10); rem++) {
+        const rows = divRows(b, q, rem);
+        if (!rows || JSON.stringify(rows.map(([nm, x, o]) => [nm, String(x).length, o])) !== shape) continue;
+        if (vs.every((v) => String(rows[v.row][1])[v.i] === v.digit)) return true;
+      }
+      let i = lq - 1;
+      while (i >= 0 && ++idx[i] === opts[i].length) idx[i--] = 0;
+      if (i < 0) break;
+    }
   }
   return false;
 }
@@ -125,11 +143,9 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
   };
   for await (const r of records(op)) {
     if (isTrivial(op, r)) { skipped++; continue; }
-    let problem = r.grid_problem;
-    const split = op === 'div' && remainderSplits(r);
-    if (split) problem = revealRemainder(problem);
+    const problem = r.grid_problem;
     const cand = {
-      id: shortId(op, r.grid_problem), problem, solution: r.grid_solution, split,
+      id: shortId(op, problem), problem, solution: r.grid_solution, split: false, rec: op === 'div' ? r : null,
       n: count(problem, /□/g), v: count(problem, /[０-９]/g), score: score(op, r),
     };
     if (!Array.isArray(r.revealed) && dullness(op, r) === 0 && !picked.has(cand.solution)) { picked.set(cand.solution, cand); continue; }
@@ -148,6 +164,15 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
         have++;
       }
     }
+  }
+
+  // 別解の判定は重いので、載せるものだけ。余りの 0 を見せると □ が 1 つ減る
+  for (const c of picked.values()) {
+    if (!c.rec || !remainderSplits(c.rec)) continue;
+    c.split = true;
+    c.problem = revealRemainder(c.problem);
+    c.n = count(c.problem, /□/g);
+    c.v = count(c.problem, /[０-９]/g);
   }
 
   const groups = new Map();   // n（□ の数） -> [id, problem, solution][]（見えている数字が多い＝やさしい順）

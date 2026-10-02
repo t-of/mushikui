@@ -225,7 +225,6 @@ function renderPuzzle() {
       <button class="pill" data-act="list">← 一覧</button>
       <span class="puzzle__count">${OPS[cur.op].label} ${cur.pos} / ${cur.total}</span>
     </div>
-    ${cur.op === 'div' ? '<p class="puzzle__rule">割り切れるわり算です（余りは 0）</p>' : ''}
     <div class="grid"></div>
     <p class="status" id="status"></p>
     <div class="actions">
