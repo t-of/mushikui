@@ -30,12 +30,20 @@ function setAudioSession(soundOn) {
 // 演算の種類。問題は data/<op>/ 以下にある（tools/make-data.mjs が作る）。
 //   manifest.json: 区分（虫食い=□ の数）ごとの id の並びと件数だけ（軽い。一覧画面が読む）
 //   blanks-<n>.json: その区分の問題本体 [id, grid_problem, grid_solution][]（問題を開くときだけ読む）
+// groupLabel/groupTitle: 一覧の区分（manifest.groups[].n）の見せ方。他の演算は虫食いの数、n 進数は進数そのもの。
+// puzzleLabel: 問題画面の上に出す名前。n 進数はその問題の進数を見せる（n は group 側と同じ値）。
 const OPS = {
-  mul: { label: 'かけ算' },
-  div: { label: 'わり算' },
-  add: { label: 'たし算' },
-  sub: { label: 'ひき算' },
+  mul: { label: 'かけ算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'かけ算' },
+  div: { label: 'わり算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'わり算' },
+  add: { label: 'たし算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'たし算' },
+  sub: { label: 'ひき算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'ひき算' },
+  nbase: {
+    label: 'n進数', groupLabel: (n) => `${n}進数`, groupTitle: (n) => `${n} 進数`, puzzleLabel: (n) => `${n} 進数`,
+    note: 'n 進数の筆算。0〜(n−1) の数字（10 以上は A〜F）を使い、同じ数字は 2 回出てこない。',
+  },
 };
+// n 進数の数字は 0〜F（半角）。10 以上は A〜F で書く
+const NBASE_ALPHA = '0123456789ABCDEF';
 
 const manifestCache = {};   // op -> Promise<{ total, groups: [{ n, ids }] }>
 function loadManifest(op) {
@@ -117,6 +125,7 @@ function showHome() {
     <div class="home__extra">
       <button class="opBtn opBtn--sub" data-op="add">たし算</button>
       <button class="opBtn opBtn--sub" data-op="sub">ひき算</button>
+      <button class="opBtn opBtn--sub" data-op="nbase">n進数</button>
     </div>
   `;
   stage.appendChild(wrap);
@@ -140,8 +149,9 @@ async function showList(op) {
       <h2 class="list__title">${OPS[op].label}</h2>
       <span class="list__total">ぜんぶ ${manifest.total} 問・解いた ${solvedTotal} 問</span>
     </div>
+    ${OPS[op].note ? `<p class="list__note">${OPS[op].note}</p>` : ''}
     <div class="list__tabs">
-      ${manifest.groups.map((g) => `<button class="tabBtn" data-jump="blanks-${g.n}">□${g.n}</button>`).join('')}
+      ${manifest.groups.map((g) => `<button class="tabBtn" data-jump="blanks-${g.n}">${OPS[op].groupLabel(g.n)}</button>`).join('')}
     </div>
     <div class="list__sections"></div>
   `;
@@ -152,7 +162,7 @@ async function showList(op) {
     const section = document.createElement('section');
     section.className = 'listGroup';
     section.id = `blanks-${g.n}`;
-    section.innerHTML = `<h3 class="listGroup__title">□ ${g.n} 個（${g.ids.length} 問・解いた ${solvedInGroup} 問）</h3>`;
+    section.innerHTML = `<h3 class="listGroup__title">${OPS[op].groupTitle(g.n)}（${g.ids.length} 問・解いた ${solvedInGroup} 問）</h3>`;
     const grid = document.createElement('div');
     grid.className = 'list__grid';
     g.ids.forEach((id, localIndex) => {
@@ -176,17 +186,22 @@ async function showList(op) {
 }
 
 // 1 文字ずつのマス。kind: 'edit'（空マス）/ 'fixed'（最初から見えている数字）/ 'deco'（記号・空白・線）
-function buildCells(problem, solution) {
+// 普通の演算は全角の数字（０〜９）、n 進数は半角の数字・英字（0〜F）で書かれている（data/ の中身がそう）。
+function buildCells(op, problem, solution) {
+  const isNbase = op === 'nbase';
+  const padChar = isNbase ? ' ' : '　';
+  const isDigit = isNbase ? (ch) => NBASE_ALPHA.includes(ch) : (ch) => /[０-９]/.test(ch);
+  const toVal = isNbase ? (ch) => NBASE_ALPHA.indexOf(ch) : fullToHalf;
   const pLines = problem.split('\n');
   const sLines = solution.split('\n');
   const cols = Math.max(...pLines.map((l) => l.length));
-  const pad = (l) => l + '　'.repeat(cols - l.length);
+  const pad = (l) => l + padChar.repeat(cols - l.length);
   const rows = pLines.map((l, r) => {
     const pl = pad(l), sl = pad(sLines[r]);
     return [...pl].map((ch, c) => {
       const sch = sl[c];
-      if (ch === '□') return { kind: 'edit', answer: fullToHalf(sch), value: null };
-      if (/[０-９]/.test(ch)) return { kind: 'fixed', answer: fullToHalf(ch) };
+      if (ch === '□') return { kind: 'edit', answer: toVal(sch), value: null };
+      if (isDigit(ch)) return { kind: 'fixed', answer: toVal(ch) };
       return { kind: 'deco', text: ch };
     });
   });
@@ -195,6 +210,9 @@ function buildCells(problem, solution) {
 const FULL = '０１２３４５６７８９';
 function fullToHalf(ch) { const i = FULL.indexOf(ch); return i < 0 ? null : i; }
 function halfToFull(n) { return FULL[n]; }
+function toChar(op, n) { return op === 'nbase' ? NBASE_ALPHA[n] : halfToFull(n); }
+// 数字パッドに出す値。n 進数は 0〜(n−1)（n はその問題の進数＝showPuzzle に渡した n そのもの）
+function padDigits(op, n) { return op === 'nbase' ? Array.from({ length: n }, (_, i) => i) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]; }
 
 let cur = null;   // { op, n, localIndex, id, manifest, pos, total, rows, active: [r,c] | null, done }
 
@@ -205,7 +223,7 @@ async function showPuzzle(op, n, localIndex) {
   cur = {
     op, n, localIndex, id, manifest,
     pos: globalPosition(manifest, n, localIndex), total: manifest.total,
-    rows: buildCells(problem, solution), active: null, done: false,
+    rows: buildCells(op, problem, solution), active: null, done: false,
   };
   renderPuzzle();
 }
@@ -223,7 +241,7 @@ function renderPuzzle() {
   wrap.innerHTML = `
     <div class="puzzle__bar">
       <button class="pill" data-act="list">← 一覧</button>
-      <span class="puzzle__count">${OPS[cur.op].label} ${cur.pos} / ${cur.total}</span>
+      <span class="puzzle__count">${OPS[cur.op].puzzleLabel(cur.n)} ${cur.pos} / ${cur.total}</span>
     </div>
     <div class="grid"></div>
     <p class="status" id="status"></p>
@@ -233,7 +251,7 @@ function renderPuzzle() {
       <button class="pill" data-act="next">次の問題 →</button>
     </div>
     <div class="pad" id="pad">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => `<button class="padBtn" data-digit="${n}">${n}</button>`).join('')}
+      ${padDigits(cur.op, cur.n).map((n) => `<button class="padBtn" data-digit="${n}">${toChar(cur.op, n)}</button>`).join('')}
       <button class="padBtn padBtn--clear" data-digit="clear">消す</button>
     </div>
   `;
@@ -304,9 +322,9 @@ function paintGrid() {
     const isActive = cur.active && cur.active[0] === r && cur.active[1] === c;
     el.classList.toggle('cell--active', !!isActive);
     el.classList.remove('cell--ok', 'cell--bad');
-    if (cell.kind === 'fixed') el.textContent = halfToFull(cell.answer);
+    if (cell.kind === 'fixed') el.textContent = toChar(cur.op, cell.answer);
     else if (cell.kind === 'deco') el.textContent = cell.text;
-    else el.textContent = cell.value == null ? '' : halfToFull(cell.value);
+    else el.textContent = cell.value == null ? '' : toChar(cur.op, cell.value);
   }));
 }
 
@@ -334,7 +352,10 @@ function moveActive(delta) {
 
 function onKeyDown(e) {
   if (!cur || cur.done || !document.querySelector('.puzzle')) return;
-  if (/^[0-9]$/.test(e.key)) { setActiveValue(Number(e.key)); return; }
+  if (cur.op === 'nbase') {
+    const i = NBASE_ALPHA.indexOf(e.key.toUpperCase());
+    if (i >= 0 && i < cur.n) { setActiveValue(i); return; }
+  } else if (/^[0-9]$/.test(e.key)) { setActiveValue(Number(e.key)); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') { setActiveValue(null); return; }
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { moveActive(1); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { moveActive(-1); return; }

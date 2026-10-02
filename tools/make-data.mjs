@@ -197,3 +197,58 @@ for (const op of ['add', 'sub', 'mul', 'div']) {
   const shown = [...new Set([...picked.values()].map((c) => c.v))].sort((a, b) => a - b);
   console.log(op, manifest.total, '問（', skipped, '問は 1 桁で単純すぎるため除外）', `見えている数字 ${shown.join('・')} 個`, revealed ? `余りの 0 を見せた ${revealed} 問` : '');
 }
+
+// ---- n 進数（nbase）: drafts/mushikui/nbase/problems.json（~/GitHub/tof/drafts/mushikui/nbase/gen.py が作った）から変換 ----
+// 区分はほかの演算と違い「虫食いの数」ではなく「何進数か」（n）。n 進数は進数ごとに難しさが変わり、
+// 虫食いの数で揃えても進数がばらばらで比べにくいため。manifest の形は同じ {total, groups:[{n, ids}]} を流用する。
+//
+// 数字は 0〜F（半角 ASCII）で表す。筆算の行は A（1つ目の数）・B（2つ目の数、かけ算は常に 1 桁）・C（答え）だけ
+// （この問題集はかけ算の部分積を表示しない形だけを使っている）。
+const NBASE_SRC = path.join(os.homedir(), 'GitHub/tof/drafts/mushikui/nbase/problems.json');
+const ALPHA = '0123456789ABCDEF';
+
+function nbaseRows(shape) {
+  if (shape[0] === '+') return [['A', shape[1], 0], ['B', shape[2], 0], ['C', shape[3], 0]];
+  const rows = [['A', shape[1], 0], ['B', shape[2], 0]];
+  shape[3].forEach((l, j) => rows.push([`P${j}`, l, j]));
+  rows.push(['C', shape[4], 0]);
+  return rows;
+}
+function nbaseLines(shape, answer, hintKeys) {
+  const rows = nbaseRows(shape);
+  const W = Math.max(...rows.map(([, l, s]) => l + s)) + 2;
+  const lines = [];
+  rows.forEach(([r, l, s]) => {
+    let t = '';
+    for (let i = l - 1; i >= 0; i--) t += hintKeys.has(`${r}${i}`) ? ALPHA[answer[`${r}${i}`]] : '□';
+    const pre = r === 'B' ? (shape[0] === '+' ? '+' : '×') : ' ';
+    lines.push(pre + ' '.repeat(W - l - s - 1) + t + ' '.repeat(s));
+    if (r === 'B') lines.push('-'.repeat(W));
+  });
+  return lines;
+}
+
+if (fs.existsSync(NBASE_SRC)) {
+  const problems = JSON.parse(fs.readFileSync(NBASE_SRC, 'utf8'));
+  const groups = new Map();   // n（進数） -> [id, problem, solution][]
+  for (const p of problems) {
+    const problem = nbaseLines(p.shape, p.answer, new Set(p.shown)).join('\n');
+    const solution = nbaseLines(p.shape, p.answer, new Set(Object.keys(p.answer))).join('\n');
+    const id = shortId('nbase', problem);
+    if (!groups.has(p.n)) groups.set(p.n, []);
+    groups.get(p.n).push([id, problem, solution]);
+  }
+  const ns = [...groups.keys()].sort((a, b) => a - b);
+  const dir = path.join(OUT, 'nbase');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  for (const n of ns) fs.writeFileSync(path.join(dir, `blanks-${n}.json`), JSON.stringify(groups.get(n)));
+  const manifest = {
+    total: ns.reduce((s, n) => s + groups.get(n).length, 0),
+    groups: ns.map((n) => ({ n, ids: groups.get(n).map(([id]) => id) })),
+  };
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
+  console.log('nbase', manifest.total, '問（', ns.length, '進数ぶん）');
+} else {
+  console.log('nbase: スキップ（', NBASE_SRC, 'が無い）');
+}
