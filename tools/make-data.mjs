@@ -252,3 +252,27 @@ if (fs.existsSync(NBASE_SRC)) {
 } else {
   console.log('nbase: スキップ（', NBASE_SRC, 'が無い）');
 }
+
+// ---- n 進数・全部虫食い（nbase2）: drafts/mushikui/nbase2/problems.json（同じフォルダの gen.py が作った） ----
+// マスは全部 □（2n 個）で、0〜(n−1) がちょうど 2 回ずつ使われる。図は gen.py が書いたものをそのまま使う。区分は nbase と同じく進数。
+const NBASE2_SRC = path.join(os.homedir(), 'GitHub/tof/drafts/mushikui/nbase2/problems.json');
+if (fs.existsSync(NBASE2_SRC)) {
+  const groups = new Map();
+  for (const p of JSON.parse(fs.readFileSync(NBASE2_SRC, 'utf8'))) {
+    if (!groups.has(p.n)) groups.set(p.n, []);
+    groups.get(p.n).push([shortId('nbase2', p.problem), p.problem, p.solution]);
+  }
+  const ns = [...groups.keys()].sort((a, b) => a - b);
+  const dir = path.join(OUT, 'nbase2');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  for (const n of ns) fs.writeFileSync(path.join(dir, `blanks-${n}.json`), JSON.stringify(groups.get(n)));
+  const manifest = {
+    total: ns.reduce((s, n) => s + groups.get(n).length, 0),
+    groups: ns.map((n) => ({ n, ids: groups.get(n).map(([id]) => id) })),
+  };
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
+  console.log('nbase2', manifest.total, '問（', ns.length, '進数ぶん）');
+} else {
+  console.log('nbase2: スキップ（', NBASE2_SRC, 'が無い）');
+}

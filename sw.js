@@ -9,7 +9,7 @@
 // ブラウザの HTTP キャッシュを通さない（install は reload、fetch は no-cache）。古い main.js と新しい index.html が混ざって動かなくなるのを防ぐ。
 
 const PREFIX = 'mushikui-';
-const VERSION = 'v10';
+const VERSION = 'v11';
 const CACHE = `${PREFIX}${VERSION}`;
 const FONT_CACHE = `${PREFIX}fonts`;
 
@@ -32,6 +32,7 @@ const SHELL = [
   './data/mul/manifest.json',
   './data/div/manifest.json',
   './data/nbase/manifest.json',
+  './data/nbase2/manifest.json',
 ];
 
 self.addEventListener('install', (e) => {

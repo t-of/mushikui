@@ -41,7 +41,13 @@ const OPS = {
     label: 'n進数', groupLabel: (n) => `${n}進数`, groupTitle: (n) => `${n} 進数`, puzzleLabel: (n) => `${n} 進数`,
     note: 'n 進数の筆算。0〜(n−1) の数字（10 以上は A〜F）を使い、同じ数字は 2 回出てこない。',
   },
+  nbase2: {
+    label: '全部虫食い', groupLabel: (n) => `${n}進数`, groupTitle: (n) => `${n} 進数`, puzzleLabel: (n) => `${n} 進数・全部虫食い`,
+    note: 'n 進数の筆算で、マスは全部虫食い。0〜(n−1) の数字がちょうど 2 回ずつ使われる。答えは 1 通り。',
+  },
 };
+// n 進数の問題（nbase・nbase2）。数字は半角で、数字パッドは 0〜(n−1)
+const isNbaseOp = (op) => op === 'nbase' || op === 'nbase2';
 // n 進数の数字は 0〜F（半角）。10 以上は A〜F で書く
 const NBASE_ALPHA = '0123456789ABCDEF';
 
@@ -126,6 +132,7 @@ function showHome() {
       <button class="opBtn opBtn--sub" data-op="add">たし算</button>
       <button class="opBtn opBtn--sub" data-op="sub">ひき算</button>
       <button class="opBtn opBtn--sub" data-op="nbase">n進数</button>
+      <button class="opBtn opBtn--sub" data-op="nbase2">全部虫食い</button>
     </div>
   `;
   stage.appendChild(wrap);
@@ -188,7 +195,7 @@ async function showList(op) {
 // 1 文字ずつのマス。kind: 'edit'（空マス）/ 'fixed'（最初から見えている数字）/ 'deco'（記号・空白・線）
 // 普通の演算は全角の数字（０〜９）、n 進数は半角の数字・英字（0〜F）で書かれている（data/ の中身がそう）。
 function buildCells(op, problem, solution) {
-  const isNbase = op === 'nbase';
+  const isNbase = isNbaseOp(op);
   const padChar = isNbase ? ' ' : '　';
   const isDigit = isNbase ? (ch) => NBASE_ALPHA.includes(ch) : (ch) => /[０-９]/.test(ch);
   const toVal = isNbase ? (ch) => NBASE_ALPHA.indexOf(ch) : fullToHalf;
@@ -210,9 +217,9 @@ function buildCells(op, problem, solution) {
 const FULL = '０１２３４５６７８９';
 function fullToHalf(ch) { const i = FULL.indexOf(ch); return i < 0 ? null : i; }
 function halfToFull(n) { return FULL[n]; }
-function toChar(op, n) { return op === 'nbase' ? NBASE_ALPHA[n] : halfToFull(n); }
+function toChar(op, n) { return isNbaseOp(op) ? NBASE_ALPHA[n] : halfToFull(n); }
 // 数字パッドに出す値。n 進数は 0〜(n−1)（n はその問題の進数＝showPuzzle に渡した n そのもの）
-function padDigits(op, n) { return op === 'nbase' ? Array.from({ length: n }, (_, i) => i) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]; }
+function padDigits(op, n) { return isNbaseOp(op) ? Array.from({ length: n }, (_, i) => i) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]; }
 
 let cur = null;   // { op, n, localIndex, id, manifest, pos, total, rows, active: [r,c] | null, done }
 
@@ -352,7 +359,7 @@ function moveActive(delta) {
 
 function onKeyDown(e) {
   if (!cur || cur.done || !document.querySelector('.puzzle')) return;
-  if (cur.op === 'nbase') {
+  if (isNbaseOp(cur.op)) {
     const i = NBASE_ALPHA.indexOf(e.key.toUpperCase());
     if (i >= 0 && i < cur.n) { setActiveValue(i); return; }
   } else if (/^[0-9]$/.test(e.key)) { setActiveValue(Number(e.key)); return; }
