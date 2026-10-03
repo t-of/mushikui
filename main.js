@@ -35,6 +35,10 @@ function setAudioSession(soundOn) {
 const OPS = {
   mul: { label: 'かけ算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'かけ算' },
   div: { label: 'わり算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'わり算' },
+  divr: {
+    label: 'あまりあり', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'わり算・あまりあり',
+    note: 'あまりも □。あまりが 0 のこともある。見えている数字は 1 つで、答えは 1 通り。',
+  },
   add: { label: 'たし算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'たし算' },
   sub: { label: 'ひき算', groupLabel: (n) => `□${n}`, groupTitle: (n) => `□ ${n} 個`, puzzleLabel: () => 'ひき算' },
   nbase: {
@@ -45,9 +49,13 @@ const OPS = {
     label: '全部虫食い', groupLabel: (n) => `${n}進数`, groupTitle: (n) => `${n} 進数`, puzzleLabel: (n) => `${n} 進数・全部虫食い`,
     note: 'n 進数の筆算で、マスは全部虫食い。0〜(n−1) の数字がちょうど 2 回ずつ使われる。答えは 1 通り。',
   },
+  nbase3: {
+    label: '1が1個', groupLabel: (n) => `${n}進数`, groupTitle: (n) => `${n} 進数`, puzzleLabel: (n) => `${n} 進数・1が1個`,
+    note: 'n 進数の筆算で、マスは全部虫食い。1 が 1 個、2 が 2 個、…、(n−1) が (n−1) 個使われ、0 は使わない。答えは 1 通り。',
+  },
 };
-// n 進数の問題（nbase・nbase2）。数字は半角で、数字パッドは 0〜(n−1)
-const isNbaseOp = (op) => op === 'nbase' || op === 'nbase2';
+// n 進数の問題（nbase・nbase2・nbase3）。数字は半角で、数字パッドは 0〜(n−1)
+const isNbaseOp = (op) => op === 'nbase' || op === 'nbase2' || op === 'nbase3';
 // n 進数の数字は 0〜F（半角）。10 以上は A〜F で書く
 const NBASE_ALPHA = '0123456789ABCDEF';
 
@@ -126,6 +134,7 @@ function showHome() {
     <div class="home__main">
       <button class="opBtn opBtn--main" data-op="mul">かけ算</button>
       <button class="opBtn opBtn--main" data-op="div">わり算</button>
+      <button class="opBtn opBtn--main" data-op="divr">あまりあり</button>
     </div>
     <p class="home__sub">おまけ</p>
     <div class="home__extra">
@@ -133,6 +142,7 @@ function showHome() {
       <button class="opBtn opBtn--sub" data-op="sub">ひき算</button>
       <button class="opBtn opBtn--sub" data-op="nbase">n進数</button>
       <button class="opBtn opBtn--sub" data-op="nbase2">全部虫食い</button>
+      <button class="opBtn opBtn--sub" data-op="nbase3">1が1個</button>
     </div>
   `;
   stage.appendChild(wrap);

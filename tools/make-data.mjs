@@ -33,7 +33,7 @@ function shortId(op, problem) {
 //   - 答えの図に出てくる数字が 6 種類未満
 // dullness はその当てはまった数（0 なら厳選に入る）。区分を埋めるときは score の高い順に足す。
 function dullness(op, r) {
-  if (op !== 'mul' && op !== 'div') return 0;
+  if (op !== 'mul' && op !== 'div' && op !== 'divr') return 0;
   const val = (name) => r.rows.find((s) => s[0] === name)[1];
   const [x, y] = op === 'mul' ? [val('A'), val('B')] : [val('B'), val('Q')];
   let d = 0;
@@ -51,7 +51,7 @@ const score = (op, r) => distinctDigits(r) - 3 * dullness(op, r);
 function isTrivial(op, r) {
   const len = (name) => r.shape.find((s) => s[0] === name)?.[1];
   if (op === 'mul') return len('A') === 1 || len('B') === 1;
-  if (op === 'div') return len('B') === 1;
+  if (op === 'div' || op === 'divr') return len('B') === 1;
   return false;
 }
 
@@ -131,7 +131,9 @@ async function* records(op) {
 const PER_BLANKS = 2, PER_SHOWN = 1;
 const count = (s, re) => (s.match(re) || []).length;
 
-for (const op of ['add', 'sub', 'mul', 'div']) {
+// divr（あまりあり）: puzzles_divr.jsonl は ~/GitHub/tof/drafts/mushikui/blank/to_data.py が作る。あまりも □ で数えた唯一解なので、
+// 余りの 0 を見せる処理（remainderSplits）は要らない（rec は div だけに付く）
+for (const op of ['add', 'sub', 'mul', 'div', 'divr']) {
   const picked = new Map();   // grid_solution -> 載せる問題
   const best = { n: new Map(), v: new Map() };   // 区分 -> score の高い順の候補（上位だけ）
   let skipped = 0, revealed = 0;
@@ -253,17 +255,21 @@ if (fs.existsSync(NBASE_SRC)) {
   console.log('nbase: スキップ（', NBASE_SRC, 'が無い）');
 }
 
-// ---- n 進数・全部虫食い（nbase2）: drafts/mushikui/nbase2/problems.json（同じフォルダの gen.py が作った） ----
-// マスは全部 □（2n 個）で、0〜(n−1) がちょうど 2 回ずつ使われる。図は gen.py が書いたものをそのまま使う。区分は nbase と同じく進数。
-const NBASE2_SRC = path.join(os.homedir(), 'GitHub/tof/drafts/mushikui/nbase2/problems.json');
-if (fs.existsSync(NBASE2_SRC)) {
+// ---- n 進数・全部虫食い（nbase2・nbase3）: [{n, problem, solution}] の JSON から。図はそのまま使う。区分は nbase と同じく進数 ----
+//   nbase2: マスは全部 □（2n 個）で、0〜(n−1) がちょうど 2 回ずつ（~/GitHub/tof/drafts/mushikui/nbase2/gen.py が作った）
+//   nbase3: マスは全部 □ で、1 が 1 個・2 が 2 個・…・(n−1) が (n−1) 個、0 は無し（~/GitHub/tof/drafts/mushikui/blank/to_data.py が作った）
+for (const [op, src] of [
+  ['nbase2', path.join(os.homedir(), 'GitHub/tof/drafts/mushikui/nbase2/problems.json')],
+  ['nbase3', path.join(os.homedir(), 'GitHub/tof/drafts/mushikui/blank/nbase3.json')],
+]) {
+  if (!fs.existsSync(src)) { console.log(`${op}: スキップ（`, src, 'が無い）'); continue; }
   const groups = new Map();
-  for (const p of JSON.parse(fs.readFileSync(NBASE2_SRC, 'utf8'))) {
+  for (const p of JSON.parse(fs.readFileSync(src, 'utf8'))) {
     if (!groups.has(p.n)) groups.set(p.n, []);
-    groups.get(p.n).push([shortId('nbase2', p.problem), p.problem, p.solution]);
+    groups.get(p.n).push([shortId(op, p.problem), p.problem, p.solution]);
   }
   const ns = [...groups.keys()].sort((a, b) => a - b);
-  const dir = path.join(OUT, 'nbase2');
+  const dir = path.join(OUT, op);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   for (const n of ns) fs.writeFileSync(path.join(dir, `blanks-${n}.json`), JSON.stringify(groups.get(n)));
@@ -272,7 +278,5 @@ if (fs.existsSync(NBASE2_SRC)) {
     groups: ns.map((n) => ({ n, ids: groups.get(n).map(([id]) => id) })),
   };
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
-  console.log('nbase2', manifest.total, '問（', ns.length, '進数ぶん）');
-} else {
-  console.log('nbase2: スキップ（', NBASE2_SRC, 'が無い）');
+  console.log(op, manifest.total, '問（', ns.length, '進数ぶん）');
 }
